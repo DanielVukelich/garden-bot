@@ -1,16 +1,17 @@
-from asyncio import AbstractEventLoop
-import os
-import asyncio
 from datetime import timedelta
-from quart import Quart, render_template, request
+from quart import Config, Quart, render_template, request
 from gpiozero import Device
+from gpiozero.pins.native import NativeFactory
 from gpiozero.pins.mock import MockFactory
-from src.relay import SolenoidController, Solenoid, RelayId
+
+
+from src.relay import RelayController, Solenoid, RelayId
 from src.camera import WebCamHandler
 from src.job_runner import JobRunner, WateringJob
+from config import GardenBotConfig
 
 async def index_handler():
-    return await render_template("index.html")
+    return await render_template("index.html", solenoids=Solenoid)
 
 class SolenoidHandler():
 
@@ -25,12 +26,16 @@ class SolenoidHandler():
             return 'The system is busy: ' + str(running_job)
         return 'Success: ' + str(running_job)
 
-def init_hardware() -> SolenoidController:
-    # For now, just mock the relays
-    Device.pin_factory = MockFactory()
+def init_hardware(config: Config) -> RelayController:
+    if config['USE_MOCK_PINS']:
+        print('Using mocked GPIO pins')
+        Device.pin_factory = MockFactory()
+    else:
+        print('Using raspi GPIO pins')
+        Device.pin_factory = NativeFactory()
 
     # Define assign each relay a gpio pin on the RaspberryPi
-    controller = SolenoidController({
+    controller = RelayController({
         RelayId.Power: 14,
         RelayId.BankSelector: 15,
         RelayId.Bank0: 27,
@@ -42,8 +47,9 @@ def init_hardware() -> SolenoidController:
 
 def startup() -> Quart:
     app = Quart(__name__)
+    app.config.from_object(GardenBotConfig)
 
-    controller = init_hardware()
+    controller = init_hardware(app.config)
     runner = JobRunner(controller)
     faucet_handler = SolenoidHandler(runner)
     camera = WebCamHandler()

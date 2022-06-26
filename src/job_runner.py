@@ -4,7 +4,7 @@ from collections.abc import Awaitable
 from datetime import datetime, timedelta
 from typing import Any, Optional, Tuple
 
-from src.relay import Solenoid, SolenoidController
+from src.relay import Solenoid, RelayController
 
 class WateringJob():
     duration : timedelta
@@ -24,8 +24,8 @@ class JobRunner():
     task : Optional[Awaitable[Any]]
     current_job : Optional[WateringJob] = None
 
-    def __init__(self, solenoids: SolenoidController):
-        self._solenoids = solenoids
+    def __init__(self, solenoids: RelayController):
+        self._relays = solenoids
         self._lock = Lock()
         self.task = None
 
@@ -44,17 +44,16 @@ class JobRunner():
         assert (job.duration > timedelta(seconds=5)), 'job duration too short'
 
         print('Running job: ' + str(job))
-        self._solenoids.system_power_off()
-        self._solenoids.enable_solenoid(job.solenoid)
 
         job.actual_start = datetime.utcnow()
-        self._solenoids.system_power_on()
+        self._relays.solenoid_power_on(job.solenoid)
+        self._relays.pump_power_on()
         try:
             await asyncio.sleep(job.duration.total_seconds())
         except Exception as e:
             print('Error running job: ' + str(job) + ' Exception: ' + str(e))
         finally:
-            self._solenoids.system_power_off()
+            self._relays.everything_power_off()
             job.actual_end = datetime.utcnow()
         print('Done running job: ' + str(job))
 

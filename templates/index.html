@@ -1,9 +1,10 @@
 <b>Hello, world!</b>
 
-<a href="/api/runfaucet?id=S0">Enable solenoid 0</a>
-<a href="/api/runfaucet?id=S1">Enable solenoid 1</a>
-<a href="/api/runfaucet?id=S2">Enable solenoid 2</a>
-<a href="/api/runfaucet?id=S3">Enable solenoid 3</a>
+{% for solenoid in solenoids %}
+<a href="/api/runfaucet?id={{ solenoid.name }}">Enable {{ solenoid.value }}</a>
+{% endfor %}
+
+<br/>
 
 <img src='/camera?ms=0' id='video-feed'/>
 <script>

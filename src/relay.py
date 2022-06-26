@@ -1,24 +1,24 @@
 from typing import Dict
 import gpiozero
-from enum import Enum
+from enum import Enum, IntEnum
 
-class Solenoid(Enum):
+class Solenoid(str, Enum):
     S0 = 'Solenoid 0',
     S1 = 'Solenoid 1',
     S2 = 'Solenoid 2',
     S3 = 'Solenoid 3',
 
-class RelayId(Enum):
+class RelayId(str, Enum):
     Power = 'Pump and Solenoid(s) Power Supply',
     BankSelector= 'Solenoid Bank Selector',
     Bank0 = 'Solenoid Bank 0',
     Bank1 = 'Solenoid Bank 1',
 
-class CoilStatus(Enum):
-    Off = 'Off',
-    On = 'On',
+class CoilStatus(IntEnum):
+    Off = 0,
+    On = 1,
 
-class SolenoidController:
+class RelayController:
 
     def __init__(self, gpio_mapping: Dict[RelayId, int]):
         self.gpio_mapping = gpio_mapping
@@ -53,41 +53,35 @@ class SolenoidController:
              RelayId.Bank0: CoilStatus.Off,
              RelayId.Bank1: CoilStatus.On
         })
-        self.system_power_off()
-        self.depower_all_solenoid_relays()
+        self.everything_power_off()
 
 
-    def enable_solenoid(self, solenoid: Solenoid) -> None:
+    def solenoid_power_on(self, solenoid: Solenoid) -> None:
         desired_relay_state = self.solenoid_connections[solenoid]
         for relay_id, state in desired_relay_state.items():
-            self.relays[relay_id].set(state)
+            relay = self.relays[relay_id]
+            relay.set(state)
 
-    def depower_all_solenoid_relays(self) -> None:
-        for relay_id in self.relays.keys():
-            if relay_id != RelayId.Power:
-                self.relays[relay_id].off()
-
-    def system_power_on(self) -> None:
+    def pump_power_on(self) -> None:
         self.relays[RelayId.Power].on()
-        self.depower_all_solenoid_relays()
 
-    def system_power_off(self) -> None:
-        self.relays[RelayId.Power].off()
-        self.depower_all_solenoid_relays()
+    def everything_power_off(self) -> None:
+        for relay_id in self.relays.keys():
+            self.relays[relay_id].off()
 
 class Relay:
     def __init__(self, gpio_pin: int):
         self.pin = gpio_pin
         self.relay = gpiozero.OutputDevice(gpio_pin, active_high=False, initial_value=False)
-        self.status = CoilStatus.Off
+
+    def status(self) -> CoilStatus:
+        return self.relay.value
 
     def set(self, status: CoilStatus):
         self.on() if status == CoilStatus.On else self.off()
 
     def on(self):
         self.relay.on()
-        self.status = CoilStatus.On
 
     def off(self):
         self.relay.off()
-        self.status = CoilStatus.Off
