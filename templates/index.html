@@ -5,4 +5,14 @@
 <a href="/api/runfaucet?id=S2">Enable solenoid 2</a>
 <a href="/api/runfaucet?id=S3">Enable solenoid 3</a>
 
-<img src="/camera"/>
+<img src='/camera?ms=0' id='video-feed'/>
+<script>
+  interval = 5000
+  function refreshCam() {
+      var myImg = document.getElementById('video-feed');
+      myImg.src = '/camera?ms=' + interval + '&t=' + Date.now();
+  }
+
+  refreshCam();
+  setInterval(refreshCam, interval);
+</script>

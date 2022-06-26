@@ -1,22 +1,27 @@
 from asyncio import AbstractEventLoop, Event, Lock
+from datetime import datetime, timedelta
 import os
 import cv2
 import asyncio
-from typing import List, Optional
-from quart import Response
-
-camera_daemon_exists: bool = False
-camera_daemon_init_lock: Lock = Lock()
+from typing import Any, List, Optional, Tuple
+from quart import Response, app, current_app, request
 
 class WebCamHandler():
 
-    def __init__(self, event_loop: AbstractEventLoop):
-        self.__list_video_devices()
-        self._camera = None
-        self._need_camera_connect = Event()
-        self._need_camera_connect.set()
-        self._camera_connect_complete = Event()
+    def __init__(self):
+        self.camera_id = -1
+        self.camera = None
+        self.camera_set_lock = Lock()
+        for id in self.__list_video_devices():
+            status, camera = self.__try_connect_camera(id)
+            if status:
+                self.camera_id = id
+                self.camera = camera
         self._error_img = open('static/no_camera.jpeg', 'rb').read()
+        self.camera_reconnected = Event()
+        self.retry_wait_sec = 10
+        if self.camera_id == -1:
+            print('Camera handler could not identify any usable camera')
 
     def __list_video_devices(self) -> List[int]:
         device_ids = []
@@ -28,78 +33,79 @@ class WebCamHandler():
         device_ids.sort()
         return device_ids
 
-    def __try_connect_camera(self) -> Optional[str]:
-        self._camera = None
-        for i in self.__list_video_devices():
-            camera = cv2.VideoCapture(i)
-            if camera.isOpened():
-                status, _ = camera.read()
-                if not status:
-                    continue
-                self._camera = camera
-                return '/dev/video' + str(i)
-        return None
+    def __try_connect_camera(self, device_id: int) -> Tuple[bool, Any]:
+        if device_id < 0:
+            return (False, None)
+        camera = cv2.VideoCapture(device_id)
+        if camera.isOpened():
+            status, _ = camera.read()
+            if status:
+                return (True, camera)
+        return (False, None)
 
-    async def start_camera_daemon(self):
-        global camera_daemon_exists
-        global camera_daemon_init_lock
-
-        if camera_daemon_exists:
+    async def __reconnect_camera(self):
+        # If we never acquired a camera during init, don't try reconnecting
+        if self.camera_id == -1:
             return
-        async with camera_daemon_init_lock:
-            asyncio.create_task(self.__reconnect_camera_loop(10))
-            camera_daemon_exists = True
 
+        # If camera is None, then another task is already trying to reconnect.
+        # Make the caller wait until reconnection is complete
+        if self.camera is None:
+            return self.camera_reconnected.wait()
 
-    async def __reconnect_camera_loop(self, timeout:float):
-        while(True):
-            await self._need_camera_connect.wait()
-            print('Camera daemon: Attempting to connect to camera.')
-            connected_device = self.__try_connect_camera()
-            if connected_device is None:
-                print('Camera daemon: Could not reconnect to camera.  Try again in ' + str(timeout) + ' seconds.')
-                await asyncio.sleep(timeout)
-            else:
-                print('Camera daemon: Connected to ' + connected_device + '.  Waiting for next disconnect event')
-                self._need_camera_connect.clear()
-                self._camera_connect_complete.set()
+        async with self.camera_set_lock:
+            if self.camera is None:
+                return self.camera_reconnected.wait()
+            self.camera_reconnected.clear()
+            self.camera.release()
+            self.camera = None
+            reconnected_yet = False
+            new_camera = None
+            while not reconnected_yet:
+                reconnected_yet, new_camera = self.__try_connect_camera(self.camera_id)
+                await asyncio.sleep(self.retry_wait_sec)
+            self.camera = new_camera
+            self.camera_reconnected.set()
 
+    async def __get_frames(self, ms_of_frames_to_get: int):
+        if self.camera_id == -1:
+            yield self.__generate_error_img()
+            return
 
-    async def __get_frames(self):
-        yield self.__generate_error_img()
-        while(True):
+        loop_end = datetime.utcnow() + timedelta(milliseconds=ms_of_frames_to_get)
+
+        while(datetime.utcnow() < loop_end):
             # ~60fps
             await asyncio.sleep(0.016)
 
-            if self._camera is None:
-                print('Camera handler: Waiting to connect to camera...')
+            if self.camera is None:
+                print('Camera handler: Waiting for camera reconnect')
                 yield self.__generate_error_img()
-                self._need_camera_connect.set()
-                self._camera_connect_complete.clear()
-                await self._camera_connect_complete.wait()
-                self._camera_connect_complete.clear()
-                print('Camera handler: Camera is reconnected.')
-                continue
+                await self.__reconnect_camera()
 
-            status, frame = self._camera.read()
+            status, frame = self.camera.read()
             if not status:
                 print('Camera handler: Failed to read frame.  Camera may be unplugged.')
                 yield self.__generate_error_img()
-                self._camera.release()
-                self._camera = None
+                await self.__reconnect_camera()
                 continue
 
             _, buffer = cv2.imencode('.jpeg', frame)
             yield self.__generate_response_bytes(buffer)
 
-    def __generate_response_bytes(self, buffer):
+    def __generate_response(self, buffer: bytes):
         return (b'--frame\r\n' +
-                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                b'Content-Type: image/jpeg\r\n' +
+                b'Cache-Control: no-cache\r\n' +
+                b'Content-Length: ' + bytes(str(len(buffer)), 'ascii') + b'\r\n\r\n' + buffer + b'\r\n')
+
+    def __generate_response_bytes(self, buffer):
+        content = buffer.tobytes()
+        return self.__generate_response(content)
 
     def __generate_error_img(self):
-        return (b'--frame\r\n' +
-                b'Content-Type: image/jpeg\r\n\r\n' + self._error_img + b'\r\n')
+        return self.__generate_response(self._error_img)
 
     async def get(self):
-        await self.start_camera_daemon()
-        return Response(self.__get_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+        ms = int(request.args['ms'])
+        return Response(self.__get_frames(ms), mimetype='multipart/x-mixed-replace; boundary=frame')

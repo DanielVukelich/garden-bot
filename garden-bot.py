@@ -33,29 +33,27 @@ def init_hardware() -> SolenoidController:
     controller = SolenoidController({
         RelayId.Power: 14,
         RelayId.BankSelector: 15,
-        RelayId.Bank0: 17,
-        RelayId.Bank1: 27,
+        RelayId.Bank0: 27,
+        RelayId.Bank1: 22,
     })
 
     controller.initialize_relays()
     return controller
 
-def startup(event_loop: AbstractEventLoop) -> Quart:
+def startup() -> Quart:
     app = Quart(__name__)
 
     controller = init_hardware()
     runner = JobRunner(controller)
     faucet_handler = SolenoidHandler(runner)
-    camera = WebCamHandler(event_loop)
+    camera = WebCamHandler()
 
     app.add_url_rule('/', methods=['GET'], endpoint='index', view_func=index_handler)
     app.add_url_rule( '/api/runfaucet', endpoint='faucet', methods=['GET'], view_func=faucet_handler.get)
     app.add_url_rule('/camera', endpoint='camera', methods=['GET'], view_func=camera.get)
-
     return app
 
-event_loop = asyncio.get_event_loop()
-app = startup(event_loop)
 
+app = startup()
 if __name__ == "__main__":
-    app.run(loop=event_loop)
+    app.run()
