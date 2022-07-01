@@ -1,19 +1,60 @@
-<b>Hello, world!</b>
+<div>
+  <b>Trigger a solenoid:</b>
+  <div>
+    {% for solenoid in solenoids %}
+    <input type="radio" id="{{ solenoid.name }}" name="id" value="{{ solenoid.name }}">
+    <label for="{{ solenoid.name }}">{{ solenoid.value }}</label><br>
+    {% endfor %}
 
-{% for solenoid in solenoids %}
-<a href="/api/runfaucet?id={{ solenoid.name }}">Enable {{ solenoid.value }}</a>
-{% endfor %}
+    <button onclick="TriggerSolenoid()">Submit</button>
+    <p id="job-result">Result: 'N/A'</p>
+  </div>
+</div>
 
-<br/>
+<div>
+  <textarea id="status" cols="80" rows="2"></textarea>
+</div>
 
-<img src='/camera?ms=0' id='video-feed'/>
+<div>
+  <img src='/camera?ms=0' id='video-feed'/>
+</div>
+
 <script>
-  interval = 5000
   function refreshCam() {
       var myImg = document.getElementById('video-feed');
-      myImg.src = '/camera?ms=' + interval + '&t=' + Date.now();
+      myImg.src = '/camera?ms=' + 5000 + '&t=' + Date.now();
+  }
+  refreshCam();
+  setInterval(refreshCam, 5000);
+
+
+  function refreshStatus() {
+      var request = new XMLHttpRequest();
+      request.open('GET', '/api/solenoid');
+      request.send();
+
+      request.onload = async function () {
+          var data = JSON.parse(this.response);
+          document.getElementById('status').value = this.response
+      }
+  }
+  refreshStatus();
+  setInterval(refreshStatus, 1000)
+
+  function TriggerSolenoid() {
+      id = document.querySelector('input[name="id"]:checked').value;
+
+      var request = new XMLHttpRequest();
+      request.open('POST', '/api/solenoid?id=' + id);
+      request.send();
+
+      request.onload = async function () {
+          var data = JSON.parse(this.response);
+          if(data.queued)
+              document.getElementById('job-result').innerHTML = 'Result: Successfully queued';
+          else
+              document.getElementById('job-result').innerHTML = 'Result: Another job is already running';
+      }
   }
 
-  refreshCam();
-  setInterval(refreshCam, interval);
 </script>

@@ -1,9 +1,9 @@
 from datetime import timedelta
-from quart import Config, Quart, render_template, request
+from quart import Config, Quart, Request, render_template, request
 from gpiozero import Device
 from gpiozero.pins.native import NativeFactory
 from gpiozero.pins.mock import MockFactory
-
+import json
 
 from src.relay import RelayController, Solenoid, RelayId
 from src.camera import WebCamHandler
@@ -18,13 +18,27 @@ class SolenoidHandler():
     def __init__(self, dispatcher: JobRunner):
         self.dispatcher = dispatcher
 
+    @staticmethod
+    def parse_solenoid(api_request: Request) -> Solenoid:
+        id = api_request.args['id']
+        return Solenoid[str(id)]
+
     async def get(self):
-        id = request.args['id']
-        solenoid = Solenoid[str(id)]
+        job = self.dispatcher.get_current_job()
+        response = {
+            'status': 'idle' if job is None else 'busy',
+            'current_job': None if job is None else job.to_dict(),
+        }
+        return json.dumps(response)
+
+    async def post(self):
+        solenoid = self.parse_solenoid(request)
         (status, running_job) = await self.dispatcher.try_run_job(WateringJob(timedelta(seconds=6), solenoid))
-        if not status:
-            return 'The system is busy: ' + str(running_job)
-        return 'Success: ' + str(running_job)
+        response = {
+            'queued': status,
+            'current_job': running_job.to_dict(),
+        }
+        return json.dumps(response)
 
 def init_hardware(config: Config) -> RelayController:
     if config['USE_MOCK_PINS']:
@@ -55,7 +69,8 @@ def startup() -> Quart:
     camera = WebCamHandler()
 
     app.add_url_rule('/', methods=['GET'], endpoint='index', view_func=index_handler)
-    app.add_url_rule( '/api/runfaucet', endpoint='faucet', methods=['GET'], view_func=faucet_handler.get)
+    app.add_url_rule( '/api/solenoid', endpoint='get_solenoid', methods=['GET'], view_func=faucet_handler.get)
+    app.add_url_rule( '/api/solenoid', endpoint='post_solenoid', methods=['POST'], view_func=faucet_handler.post)
     app.add_url_rule('/camera', endpoint='camera', methods=['GET'], view_func=camera.get)
     return app
 

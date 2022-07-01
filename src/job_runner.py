@@ -2,7 +2,7 @@ from asyncio import Lock
 import asyncio
 from collections.abc import Awaitable
 from datetime import datetime, timedelta
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from src.relay import Solenoid, RelayController
 
@@ -18,6 +18,14 @@ class WateringJob():
 
     def __repr__(self) -> str:
         return str(self.solenoid) + ' Duration: ' + str(self.duration) + 's Job start time: ' + str(self.actual_start) + ' Job end time: ' + str(self.actual_end)
+
+    def to_dict(self) -> Dict:
+        return {
+            'duration': self.duration.seconds,
+            'solenoid': self.solenoid.name,
+            'job_started': self.actual_start.isoformat() if self.actual_start is not None else None,
+            'job_ended': self.actual_end.isoformat() if self.actual_end is not None else None,
+        }
 
 class JobRunner():
 
@@ -38,6 +46,9 @@ class JobRunner():
             self.task = asyncio.create_task(self.__run_job(new_job))
             self.current_job = new_job
         return (True, self.current_job)
+
+    def get_current_job(self) -> Optional[WateringJob]:
+        return self.current_job
 
     async def __run_job(self, job: WateringJob):
         assert (job.duration < timedelta(minutes=2.5)), 'job duration too long'
