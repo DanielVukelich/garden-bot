@@ -1,0 +1,12 @@
+[Unit]
+Description=Start Garden-Bot web server
+After=network-online.target
+
+[Service]
+User=garden-www
+Type=Simple
+WorkingDirectory=/usr/bin/garden-bot
+ExecStart=/usr/bin/garden-bot/venv/bin/python3 /usr/bin/garden-bot/venv/bin/hypercorn /usr/bin/garden-bot/garden-bot.py:app
+
+[Install]
+WantedBy=multi-user.target
