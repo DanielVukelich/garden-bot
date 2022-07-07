@@ -1,10 +1,10 @@
-from asyncio import AbstractEventLoop, Event, Lock
+from asyncio import Event, Lock
 from datetime import datetime, timedelta
 import os
 import cv2
 import asyncio
-from typing import Any, List, Optional, Tuple
-from quart import Response, app, current_app, request
+from typing import Any, List, Tuple
+from quart import Response, request
 
 class WebCamHandler():
 

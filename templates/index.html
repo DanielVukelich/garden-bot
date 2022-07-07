@@ -12,49 +12,23 @@
 </div>
 
 <div>
-  <textarea id="status" cols="80" rows="2"></textarea>
+  <textarea id="status" cols="80" rows="2" readonly="true"></textarea>
 </div>
+<div>
+  <textarea id="flow" cols="80" rows="2" readonly="true"></textarea>
+</div>
+
+{% if mocked_pins %}
+<div id="pin-mock">
+  <input type="range" min="0" max="120" name="simulate-hz">Gpio Frequency (Hz):</input>
+  <button onclick="SimulateWaterFlow()">Submit</button>
+  <button onclick="StopWaterFlow()">Stop</button>
+</div>
+{% endif %}
+
 
 <div>
-  <img src='/camera?ms=0' id='video-feed'/>
+  <img src="/camera?ms=0" id="video-feed"/>
 </div>
 
-<script>
-  function refreshCam() {
-      var myImg = document.getElementById('video-feed');
-      myImg.src = '/camera?ms=' + 5000 + '&t=' + Date.now();
-  }
-  refreshCam();
-  setInterval(refreshCam, 5000);
-
-
-  function refreshStatus() {
-      var request = new XMLHttpRequest();
-      request.open('GET', '/api/solenoid');
-      request.send();
-
-      request.onload = async function () {
-          var data = JSON.parse(this.response);
-          document.getElementById('status').value = this.response
-      }
-  }
-  refreshStatus();
-  setInterval(refreshStatus, 1000)
-
-  function TriggerSolenoid() {
-      id = document.querySelector('input[name="select_solenoid"]:checked').value;
-
-      var request = new XMLHttpRequest();
-      request.open('POST', '/api/solenoid?id=' + id);
-      request.send();
-
-      request.onload = async function () {
-          var data = JSON.parse(this.response);
-          if(data.queued)
-              document.getElementById('job-result').innerHTML = 'Result: Successfully queued';
-          else
-              document.getElementById('job-result').innerHTML = 'Result: Another job is already running';
-      }
-  }
-
-</script>
+<script src="/js/index.js"></script>

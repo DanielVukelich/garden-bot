@@ -1,22 +1,58 @@
-from datetime import timedelta
-from quart import Config, Quart, Request, render_template, request
-from gpiozero import Device
-from gpiozero.pins.native import NativeFactory
-from gpiozero.pins.mock import MockFactory
+from datetime import datetime, timedelta
+from quart import Quart, Request, render_template, request
 import json
 
-from src.relay import RelayController, Solenoid, RelayId
-from src.camera import WebCamHandler
-from src.job_runner import JobRunner, WateringJob
 from config import GardenBotConfig
 
-async def index_handler():
-    return await render_template("index.html", solenoids=Solenoid)
+from src.relay import Solenoid
+from src.camera import WebCamHandler
+from src.job_runner import WateringJob
+from src.flow import FlowMonitor
+from src.services import Services
+
+class UiHandler():
+    def __init__(self, services: Services):
+        self.pins_mocked = services.config['USE_MOCK_PINS']
+
+    async def get(self):
+        return await render_template("index.html", solenoids=Solenoid, mocked_pins=self.pins_mocked)
+
+class FlowRateHandler():
+
+    def __init__(self, services: Services):
+        self.allow_mocked_flow = services.config['USE_MOCK_PINS']
+        self.flow_monitor = services.flow_monitor
+        self.default_sample_age_cutoff = timedelta(seconds=5)
+
+    async def post(self):
+        # If we're running in a test env, allow a POST request to trigger the flow monitor's interrupt handler
+        assert(self.allow_mocked_flow)
+        FlowMonitor.gpio_callback()
+        return "\"Ok\""
+
+    async def get(self):
+        try:
+            date = request.args['from']
+            sample_cutoff = datetime.fromisoformat(date)
+        except Exception:
+            sample_cutoff = datetime.utcnow() - self.default_sample_age_cutoff
+
+        status, rate = self.flow_monitor.try_get_flow(sample_cutoff)
+        response = {
+            'L/min': 0.0,
+            'G/min': 0.0,
+            'timestamp': None
+        }
+        if status and rate is not None:
+            response['L/min'] = rate.liters_per_min()
+            response['G/min'] = rate.gallons_per_min()
+            response['timestamp'] = rate.timestamp.isoformat()
+        return response
 
 class SolenoidHandler():
 
-    def __init__(self, dispatcher: JobRunner):
-        self.dispatcher = dispatcher
+    def __init__(self, services: Services):
+        self.dispatcher = services.job_runner
 
     @staticmethod
     def parse_solenoid(api_request: Request) -> Solenoid:
@@ -40,38 +76,27 @@ class SolenoidHandler():
         }
         return json.dumps(response)
 
-def init_hardware(config: Config) -> RelayController:
-    if config['USE_MOCK_PINS']:
-        print('Using mocked GPIO pins')
-        Device.pin_factory = MockFactory()
-    else:
-        print('Using raspi GPIO pins')
-        Device.pin_factory = NativeFactory()
-
-    # Define assign each relay a gpio pin on the RaspberryPi
-    controller = RelayController({
-        RelayId.Power: 14,
-        RelayId.BankSelector: 15,
-        RelayId.Bank0: 27,
-        RelayId.Bank1: 22,
-    })
-
-    controller.initialize_relays()
-    return controller
-
 def startup() -> Quart:
-    app = Quart(__name__)
+    app = Quart(
+        __name__,
+        static_url_path='',
+        static_folder='static/'
+    )
     app.config.from_object(GardenBotConfig)
 
-    controller = init_hardware(app.config)
-    runner = JobRunner(controller)
-    faucet_handler = SolenoidHandler(runner)
+    services = Services(app.config)
+
+    ui = UiHandler(services)
+    flow_handler = FlowRateHandler(services)
+    faucet_handler = SolenoidHandler(services)
     camera = WebCamHandler()
 
-    app.add_url_rule('/', methods=['GET'], endpoint='index', view_func=index_handler)
-    app.add_url_rule( '/api/solenoid', endpoint='get_solenoid', methods=['GET'], view_func=faucet_handler.get)
-    app.add_url_rule( '/api/solenoid', endpoint='post_solenoid', methods=['POST'], view_func=faucet_handler.post)
-    app.add_url_rule('/camera', endpoint='camera', methods=['GET'], view_func=camera.get)
+    app.add_url_rule('/', endpoint='get_index', methods=['GET'], view_func=ui.get)
+    app.add_url_rule('/api/solenoid', endpoint='get_solenoid', methods=['GET'], view_func=faucet_handler.get)
+    app.add_url_rule('/api/solenoid', endpoint='post_solenoid', methods=['POST'], view_func=faucet_handler.post)
+    app.add_url_rule('/api/flow', endpoint='get_flow', methods=['GET'], view_func=flow_handler.get)
+    app.add_url_rule('/api/flow', endpoint='post_flow', methods=['POST'], view_func=flow_handler.post)
+    app.add_url_rule('/camera', endpoint='get_camera', methods=['GET'], view_func=camera.get)
     return app
 
 

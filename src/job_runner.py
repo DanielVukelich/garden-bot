@@ -4,6 +4,7 @@ from collections.abc import Awaitable
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
 
+from src.flow import FlowMonitor
 from src.relay import Solenoid, RelayController
 
 class WateringJob():
@@ -32,8 +33,9 @@ class JobRunner():
     task : Optional[Awaitable[Any]]
     current_job : Optional[WateringJob] = None
 
-    def __init__(self, solenoids: RelayController):
+    def __init__(self, solenoids: RelayController, flow_monitor: FlowMonitor):
         self._relays = solenoids
+        self._flow_monitor = flow_monitor
         self._lock = Lock()
         self.task = None
 
