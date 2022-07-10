@@ -69,7 +69,8 @@ class SolenoidHandler():
 
     async def post(self):
         solenoid = self.parse_solenoid(request)
-        (status, running_job) = await self.dispatcher.try_run_job(WateringJob(timedelta(seconds=6), solenoid))
+        volume = float(request.args['vol'])
+        (status, running_job) = await self.dispatcher.try_run_job(WateringJob(volume, solenoid))
         response = {
             'queued': status,
             'current_job': running_job.to_dict(),

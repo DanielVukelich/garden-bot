@@ -67,7 +67,6 @@ class FlowMonitor():
 
             now = datetime.utcnow()
             sample_duration = now - FlowMonitor.last_sampled
-            print(FlowMonitor.working_counter)
             if sample_duration < FlowMonitor.SAMPLE_RATE:
                 FlowMonitor.working_counter += 1
                 return

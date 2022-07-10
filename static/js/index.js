@@ -23,9 +23,10 @@ setInterval(refreshStatus, 1000);
 
 function TriggerSolenoid() {
     id = document.querySelector('input[name="select_solenoid"]:checked').value;
+    volume = document.querySelector('input[name="volume"]').value;
 
     var request = new XMLHttpRequest();
-    request.open('POST', '/api/solenoid?id=' + id);
+    request.open('POST', '/api/solenoid?id=' + id + '&vol=' + volume);
     request.send();
 
     request.onload = async function () {

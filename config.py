@@ -5,4 +5,4 @@ class GardenBotConfig():
     USE_MOCK_PINS = True
     # The hall-effect flowmeter used takes frequency and divides it by this number to derive flow in L/min
     # Read the specs of your flowmeter to derive this value
-    FLOW_MAGIC_COEFFICIENT = 21.0
+    FLOW_MAGIC_COEFFICIENT = 42.0
