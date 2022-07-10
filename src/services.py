@@ -35,7 +35,7 @@ class Services:
         self.relay_controller.initialize_relays()
 
         self.flow_monitor = FlowMonitor(
-            flow_gpio=19,
+            flow_gpio=23,
             magic_flow_coefficient=config['FLOW_MAGIC_COEFFICIENT'],
             max_sample_duration=timedelta(seconds=10)
         )
